@@ -6,6 +6,9 @@
 #include <linux/module.h>	/* Specifically, a module */
 #include <linux/fs.h>
 #include <asm/uaccess.h>	/* for get_user and put_user */
+#include <linux/wait.h>
+#include <linux/sched.h>
+#include <linux/signal.h>
 
 #include "chardev.h"
 #define SUCCESS 0
@@ -158,6 +161,8 @@ device_write(struct file *file,
  * calling process), the ioctl call returns the output of this function.
  *
  */
+wait_queue_head_t wait;
+#define DELAY 1000
 long device_ioctl(struct file *file,	/* see include/linux/fs.h */
                   unsigned int ioctl_num,	/* number and param for ioctl */
                   unsigned long ioctl_param)
@@ -165,6 +170,22 @@ long device_ioctl(struct file *file,	/* see include/linux/fs.h */
 	int i;
 	char *temp;
 	char ch;
+	sigset_t saved_set;
+
+	//spin_lock_irq(&current->sigmask_lock);
+	saved_set = current->blocked;
+	sigfillset(&current->blocked);
+	recalc_sigpending();
+	//spin_unlock_irq(&current->sigmask_lock);
+
+	wait_event_interruptible_timeout(wait, 0, DELAY);
+
+	printk(KERN_CRIT "\nSo, finally I (%d) survived!!!\n", current->pid);
+
+	//spin_lock_irq(&current->sigmask_lock);
+	current->blocked = saved_set;
+	recalc_sigpending();
+	//spin_unlock_irq(&current->sigmask_lock);
 
 	/* 
 	 * Switch according to the ioctl called 
@@ -237,6 +258,8 @@ struct file_operations Fops = {
 int init_module()
 {
 	int ret_val;
+
+	init_waitqueue_head (&wait);
 	/* 
 	 * Register the character device (atleast try) 
 	 */
